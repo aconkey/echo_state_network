@@ -30,9 +30,13 @@ scale_in        scale factor of input weights
 scale_r		    scale factor of reservoir weights
 scale_fb        scale factor of feedback weights
 
+density_in      density coefficient for input-reservoir
+density_r       density coefficient for reservoirr
+density_fb      density coefficient for out-reservoir
+
 alpha	        leaking rate of reservoir units
 rho		        desired spectral radius of reservoir
-density 	    sparsity coefficient for reservoir
+out_thresh      threshold for determining classification
 
 seed 	        seed for RandomState
 rs              RandomState for random number generation
@@ -41,6 +45,7 @@ rs              RandomState for random number generation
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import eigs
+from scipy.stats import threshold
 from sklearn.linear_model import Ridge
 
 data = np.array()                   # THIS IS ALL TEMPORARY, will need module to actually import data
@@ -64,7 +69,8 @@ density_r = 0.1
 density_fb = 1.0     # experiment with feedback sparsity
 
 alpha = 1
-rho = 1         # NEED TO check what are good default values
+rho = 1             # NEED TO check what are good default values
+out_thresh = 0.5    # change threshold?
 
 seed = 123
 rs = np.random.RandomState(seed)
@@ -86,9 +92,8 @@ w_fb = sparse.rand(n_out, n_r, density_fb, random_state=rs)
 # put into range [-scale_fb, scale_fb]
 w_fb = 2 * scale_fb * w_fb - scale_fb * w_fb.ceil()
 
-# initialize reservoir and output nodes to 0:
+# initialize reservoir nodes to 0:
 x_r = np.zeros(1, n_r)
-x_out = np.zeros(1, n_out)
 
 # compute reservoir states over train duration:
 for i in range(1, t_train):
@@ -102,6 +107,24 @@ for i in range(1, t_train):
 clf = Ridge()                   # play with parameters ???
 clf.fit(x_r, x_target)
 w_out = clf.coef_
+
+# initialize the output nodes to 0:
+x_out = np.zeros(1, n_out)
+
+# drive with input to test accuracy (for now, just training inputs):
+for i in range(1, t_train):
+    x_r[i] = np.tanh(x_in[i].dot(w_in)
+                     + x_r[i-1].dot(w_r)
+                     + x_out[i-1].dot(w_fb))
+    x_r[i] = (1 - alpha) * x_r[i-1] + alpha * x_r[i]
+    x_out[i] = np.tanh(x_r[i].dot(w_out))
+    # threshold output values:
+    x_out = threshold(x_out, threshmin=out_thresh, newval=0.0)
+    x_out = threshold(x_out, threshmax=0.0, newval=1.0)
+
+# compute and output simple accuracy computation:
+print sum((x_out + x_out) != 2) / float(len(x_out))
+
 
 """
 STATUS: Ridge Regression done.
