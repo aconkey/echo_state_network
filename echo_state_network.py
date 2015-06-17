@@ -49,7 +49,7 @@ from scipy.sparse.linalg import eigs
 from scipy.stats import threshold
 from sklearn.linear_model import Ridge
 
-def main():
+def run_simulation():
 
     data = np.array()                   # THIS IS ALL TEMPORARY, will need module to actually import data
     m_train, n_in = data.shape          # and set everything appropriately
@@ -88,43 +88,19 @@ def main():
     # initialize feedback weights:
     w_fb = initialize_weights(n_out, n_r, density_fb, rs, scale_fb)
 
-    # initialize reservoir nodes to 0:
-    x_r = np.zeros(1, n_r)
-
-
-"CONTINUE DEFINING FUNCTIONS FROM THIS POINT ON"
-
-
-
     # compute reservoir states over train duration:
-    for i in range(1, t_train):
-        x_r[i] = np.tanh(x_in[i].dot(w_in)
-                         + x_r[i-1].dot(w_r)
-                         + x_target[i-1].dot(w_fb))
-        x_r[i] = (1 - alpha) * x_r[i-1] + alpha * x_r[i]
+    x_r = drive_network_train(n_r, t_train, x_in, x_target, w_in, w_r, w_fb, alpha)
 
     # compute the output weights using Ridge Regression:
     clf = Ridge()                   # play with parameters ???
     clf.fit(x_r, x_target)
     w_out = clf.coef_
 
-    # initialize the output nodes to 0:
-    x_out = np.zeros(1, n_out)
-
     # drive with input to test accuracy (for now, just training inputs):
-    for i in range(1, t_train):
-        x_r[i] = np.tanh(x_in[i].dot(w_in)
-                         + x_r[i-1].dot(w_r)
-                         + x_out[i-1].dot(w_fb))
-        x_r[i] = (1 - alpha) * x_r[i-1] + alpha * x_r[i]
-        x_out[i] = np.tanh(x_r[i].dot(w_out))
-        # threshold output values:
-        x_out = threshold(x_out, threshmin=out_thresh, newval=0.0)
-        x_out = threshold(x_out, threshmax=0.0, newval=1.0)
+    x_out = drive_network_test(n_r, n_out, t_train, x_in, w_in, w_r, w_out, w_fb, out_thresh, alpha)
 
     # compute and output simple accuracy computation:
-    print sum((x_out + x_out) != 2) / float(len(x_out))
-
+    print compute_accuracy(x_target, x_out)
 
 
 def initialize_weights(n_rows=1, n_cols=1, density=0.1, randomstate=RandomState(1), scale=1.0):
@@ -139,8 +115,8 @@ def initialize_weights(n_rows=1, n_cols=1, density=0.1, randomstate=RandomState(
     randomstate -- RandomState object for random number generation (default RandomState(1))
     scale       -- absolute value of minimum/maximum weight value (default 1.0)
     """
-    weights = np.random.rand(n_rows, n_cols, density, random_state=randomstate)
-    weights = 2 * scale * weights - scale * weights.ceil()
+    weights = sparse.rand(n_rows, n_cols, density, random_state=randomstate)
+    weights = 2 * scale * weights - scale * weights.ceil() # MIGHT NOT WORK, SPARSE!!!!
     return weights
 
 def spectral_radius(weights, spec_rad=1.0):
@@ -151,19 +127,91 @@ def spectral_radius(weights, spec_rad=1.0):
     weights     -- weight array to scale
     spec_rad    -- desired spectral radius to scale to (default 1.0)
     """
-    weights = spec_rad * (weights / max(abs(eigs(weights)[0])))
+    weights = spec_rad * (weights / max(abs(eigs(weights)[0]))) # MIGHT NOT WORK< SPARSE!!!
     return weights
+
+def drive_network_train(n_reservoir, duration, train_data, targets,
+                        w_input, w_res, w_feedback, leak_rate):
+    """
+    Drives the reservoir with training input and stores the reservoir states over time.
+
+    :param n_reservoir: size of the reservoir
+    :param duration: duration of the training period
+    :param train_data: training input data
+    :param targets: training target output values
+    :param w_input: weights of connections from input layer to reservoir
+    :param w_res: weights of connections in the reservoir
+    :param w_feedback: weights of connections from output layer back into reservoir
+    :param leak_rate: leak rate of the neurons in the reservoir
+    :return: duration x n_reservoir array of reservoir activations over time
+    """
+    reservoir = np.zeros(duration, n_reservoir)
+
+    for i in range(1, duration):
+        reservoir[i] = np.tanh(train_data[i].dot(w_input)
+                               + reservoir[i-1].dot(w_res)
+                               + targets[i-1].dot(w_feedback))
+        reservoir[i] = (1 - leak_rate) * reservoir[i-1] + leak_rate * reservoir[i]
+
+    return reservoir
+
+def drive_network_test(n_reservoir, n_output, duration, test_data, w_input,
+                       w_res, w_output, w_feedback, thresh, leak_rate):
+    """
+    Drive the reservoir with novel input and use the trained output weights to compute output values.
+
+    :param n_reservoir: size of the reservoir
+    :param n_output: size of output layer
+    :param duration: duration of testing period
+    :param test_data: test input to drive the network
+    :param w_input: weights for connections from input layer to reservoir
+    :param w_res: weights for connections for reservoir
+    :param w_output: weights for connections from reservoir to output layer
+    :param w_feedback: weights for connections from output layer back to reservoir
+    :param thresh: threshold determining how to round output value
+    :param leak_rate: leak rate of neurons in the reservoir
+    :return: duration x n_output array of computed output values over time
+    """
+    reservoir = np.zeros(duration, n_reservoir)
+    output = np.zeros(duration, n_output)
+
+    for i in range(1, duration):
+        reservoir[i] = np.tanh(test_data[i].dot(w_input)
+                               + reservoir[i-1].dot(w_res)
+                               + output[i-1].dot(w_feedback))
+        reservoir[i] = (1 - leak_rate) * reservoir[i-1] + leak_rate * reservoir[i]
+        output[i] = np.tanh(reservoir[i].dot(w_output))
+
+    output = threshold(output, threshmin=thresh, newval=0.0)
+    output = threshold(output, threshmax=0.0, newval=1.0)
+
+    return output
+
+def compute_accuracy(expected, actual):
+    """
+    Simple computation of accuracy taking the number of correct over total.
+
+    Keyword arguments:
+    expected    -- vector of 1s and 0s, expected values
+    actual      -- vector of 1s and 0s, actual values, same length as expected
+    """
+    n_correct = sum((expected + actual) != 1)
+    total = float(len(expected))
+    return n_correct / total
 
 
 if __name__ == '__main__':
-    main()
+    run_simulation()
+
+class EchoStateNetwork:
+
+    "CREATE NETWORK CLASS TO PASS AROUND NETWORK AS OBJECT"
 
 """
 STATUS: Ridge Regression done.
 
 Need to:
-    - drive with novel input
-    - break into actual modules
+    - create network object to pass around instead of a million parameters
     - create mock data set for testing and import it
     - formulate actual data set and use it
     - provide way of computing performance metrics
