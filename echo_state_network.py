@@ -62,14 +62,13 @@ def run_simulation(esn, train_data):
     esn.w_in = initialize_weights(esn.n_in + 1, esn.n_r, esn.density_in, esn.rs, esn.scale_in)
 
     # initialize reservoir in range [-scale_r, scale_r] with spectral radius rho:
-    esn.w_r = initialize_weights(esn.n_r, esn.n_r, esn.density_r, esn.rs, esn.scale_r)
-    esn.w_r = scale_spectral_radius(esn.w_r, esn.rho)
+    esn.w_r = initialize_reservoir(esn.n_r, esn.density_r, esn.rs, esn.scale_r)
 
     # initialize feedback weights:
     esn.w_fb = initialize_weights(esn.n_out, esn.n_r, esn.density_fb, esn.rs, esn.scale_fb)
 
     # compute reservoir states over train duration:
-    esn.x_r = drive_network_train(esn.n_r, esn.t_train, esn.x_in, esn.x_target, esn.w_in, esn.w_r, esn.w_fb, esn.alpha)
+    drive_network_train(esn, esn.x_in, esn.x_target, t_train)
 
     # compute the output weights using Ridge Regression:
     clf = Ridge()  # play with parameters ???
@@ -77,14 +76,13 @@ def run_simulation(esn, train_data):
     esn.w_out = clf.coef_
 
     # drive with input to test accuracy (for now, just training inputs):
-    esn.x_out = drive_network_test(esn.n_r, esn.n_out, t_train, esn.x_in, esn.w_in, esn.w_r,
-                                   esn.w_out, esn.w_fb, esn.out_thresh, esn.alpha)
+    drive_network_test(esn, esn.x_in, t_train)
 
     # compute and output simple accuracy computation:
     print compute_accuracy(esn.x_target, esn.x_out)
 
 
-def initialize_weights(n_rows=1, n_cols=1, density=0.1, randomstate=RandomState(1), scale=1.0):
+def initialize_weights(n_rows, n_cols, density=0.1, randomstate=RandomState(1), scale=1.0):
     """
     Initialize a sparse random array of weights with dimensions
     n_rows x n_cols and specified density in range [-scale, scale].
@@ -94,19 +92,39 @@ def initialize_weights(n_rows=1, n_cols=1, density=0.1, randomstate=RandomState(
     are unstable and do not produce consistent results over time.
 
     Keyword arguments:
-    n_rows      -- number of rows (default 1)
-    n_cols      -- number of columns (default 1)
+    n_rows      -- number of rows
+    n_cols      -- number of columns
     density     -- density of connections (default 0.1)
     randomstate -- RandomState object for random number generation (default RandomState(1))
     scale       -- absolute value of minimum/maximum weight value (default 1.0)
     """
-    while True:
-        weights = sparse.rand(n_rows, n_cols, density, random_state=randomstate)
-        weights = 2 * scale * weights - scale * weights.ceil()
-        if max(abs(eigs(weights)[0])) >= 0.01:
-            break
+    weights = sparse.rand(n_rows, n_cols, density, random_state=randomstate)
+    weights = 2 * scale * weights - scale * weights.ceil()
     return weights
 
+def initialize_reservoir(n_units, density=0.1, randomstate=RandomState(1), scale=1.0, spec_rad=1.0):
+    """
+    Initialize a sparse random reservoir as a square matrix representing connections among
+    the n_units neurons with connections having specified density in range [-scale, scale].
+
+    The weights are generated until they achieve a spectral radius of at least 0.01;
+    due to the iterative nature of scipy.sparse.linalg.eigs, values under this threshold
+    are unstable and do not produce consistent results over time.
+
+    Keyword arguments:
+    n_units     -- number of reservoir nodes
+    density     -- density of connections (default 0.1)
+    randomstate -- RandomState object for random number generation (default RandomState(1))
+    scale       -- absolute value of minimum/maximum weight value (default 1.0)
+    spec_rad    -- desired spectral radius to scale to (default 1.0)
+    """
+    while True:
+        weights = initialize_weights(n_units, n_units, density, randomstate, scale)
+        if max(abs(eigs(weights)[0])) >= 0.01:
+            break
+
+    weights = scale_spectral_radius(weights, spec_rad)
+    return weights
 
 def scale_spectral_radius(weights, spec_rad=1.0):
     """
@@ -119,65 +137,50 @@ def scale_spectral_radius(weights, spec_rad=1.0):
     weights = spec_rad * (weights / max(abs(eigs(weights)[0])))
     return weights
 
-
-def drive_network_train(n_reservoir, duration, train_data, targets,
-                        w_input, w_res, w_feedback, leak_rate):
+def drive_network_train(esn, inputs, targets, duration):
     """
     Drives the reservoir with training input and stores the reservoir states over time.
 
-    :param n_reservoir: size of the reservoir
-    :param duration: duration of the training period
-    :param train_data: training input data
+    :param esn: Echo State Network to drive with training input
+    :param inputs: training input data
     :param targets: training target output values
-    :param w_input: weights of connections from input layer to reservoir
-    :param w_res: weights of connections in the reservoir
-    :param w_feedback: weights of connections from output layer back into reservoir
-    :param leak_rate: leak rate of the neurons in the reservoir
-    :return: duration x n_reservoir array of reservoir activations over time
+    :param duration: duration of the training period
     """
-    reservoir = np.zeros(duration, n_reservoir)
+    esn.x_r = np.zeros((duration, esn.n_r))
 
     for i in range(1, duration):
-        reservoir[i] = np.tanh(train_data[i].dot(w_input)
-                               + reservoir[i - 1].dot(w_res)
-                               + targets[i - 1].dot(w_feedback))
-        reservoir[i] = (1 - leak_rate) * reservoir[i - 1] + leak_rate * reservoir[i]
+        print 'RESERVOIR SIZE: '
+        print esn.x_r[i].shape
+        print 'INPUTS SIZE: '
+        print inputs[i].shape
+        print inputs[i, None].shape
+        print 'IN-RESRVOIR SIZE: '
+        print esn.w_in.shape
+        esn.x_r[i] = inputs[i].dot(esn.w_in)
+            #np.tanh(inputs[i].dot(esn.w_in)
+                            # + esn.x_r[i - 1].dot(esn.w_r)
+                            # + targets[i - 1].dot(esn.w_fb))
+        esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
 
-    return reservoir
-
-
-def drive_network_test(n_reservoir, n_output, duration, test_data, w_input,
-                       w_res, w_output, w_feedback, thresh, leak_rate):
+def drive_network_test(esn, inputs, duration):
     """
     Drive the reservoir with novel input and use the trained output weights to compute output values.
 
-    :param n_reservoir: size of the reservoir
-    :param n_output: size of output layer
-    :param duration: duration of testing period
-    :param test_data: test input to drive the network
-    :param w_input: weights for connections from input layer to reservoir
-    :param w_res: weights for connections for reservoir
-    :param w_output: weights for connections from reservoir to output layer
-    :param w_feedback: weights for connections from output layer back to reservoir
-    :param thresh: threshold determining how to round output value
-    :param leak_rate: leak rate of neurons in the reservoir
-    :return: duration x n_output array of computed output values over time
+    :param esn: Echo State Network to drive with training input
+    :param inputs: training input data
+    :param duration: duration of the training period
     """
-    reservoir = np.zeros(duration, n_reservoir)
-    output = np.zeros(duration, n_output)
+    esn.x_out = np.zeros((duration, esn.n_out))
 
     for i in range(1, duration):
-        reservoir[i] = np.tanh(test_data[i].dot(w_input)
-                               + reservoir[i - 1].dot(w_res)
-                               + output[i - 1].dot(w_feedback))
-        reservoir[i] = (1 - leak_rate) * reservoir[i - 1] + leak_rate * reservoir[i]
-        output[i] = np.tanh(reservoir[i].dot(w_output))
+        esn.x_r[i] = np.tanh(inputs[i].dot(esn.w_in)
+                             + esn.x_r[i - 1].dot(esn.w_r)
+                             + esn.x_out[i - 1].dot(esn.w_fb))
+        esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
+        esn.x_out[i] = np.tanh(esn.x_r[i].dot(esn.w_out))
 
-    output = threshold(output, threshmin=thresh, newval=0.0)
-    output = threshold(output, threshmax=0.0, newval=1.0)
-
-    return output
-
+    esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
+    esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
 
 def compute_accuracy(expected, actual):
     """
@@ -231,9 +234,9 @@ class EchoStateNetwork:
         rs              RandomState for random number generation
     """
 
-    def __init__(self, n_in, n_r, n_out, w_in, w_r, w_out, w_fb, x_in, x_r, x_out,
-                 x_target, scale_in, scale_r, scale_fb, density_in, density_r,
-                 density_fb, alpha, rho, out_thresh, seed, rs):
+    def __init__(self, n_in=10, n_r=100, n_out=1, w_in=[], w_r=[], w_out=[], w_fb=[], x_in=[], x_r=[], x_out=[],
+                 x_target=[], scale_in=1.0, scale_r=1.0, scale_fb=1.0, density_in=1.0, density_r=0.1,
+                 density_fb=1.0, alpha=0.9, rho=0.9, out_thresh=0.5, seed=123, rs=RandomState(123)):
         self.n_in = n_in
         self.n_r = n_r
         self.n_out = n_out
