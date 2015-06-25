@@ -43,6 +43,7 @@ rs              RandomState for random number generation
 ==========================================================
 """
 import numpy as np
+from numpy.matlib import zeros
 from numpy.random import RandomState
 from scipy import sparse
 from scipy.sparse.linalg import eigs
@@ -84,7 +85,7 @@ def run_simulation(esn, train_data):
 
 def initialize_weights(n_rows, n_cols, density=0.1, randomstate=RandomState(1), scale=1.0):
     """
-    Initialize a sparse random array of weights with dimensions
+    Initialize a sparse random matrix of weights with dimensions
     n_rows x n_cols and specified density in range [-scale, scale].
 
     The weights are generated until they achieve a spectral radius of at least 0.01;
@@ -128,7 +129,7 @@ def initialize_reservoir(n_units, density=0.1, randomstate=RandomState(1), scale
 
 def scale_spectral_radius(weights, spec_rad=1.0):
     """
-    Scales the specified weight array to have the desired spectral radius.
+    Scales the specified weight matrix to have the desired spectral radius.
 
     Keyword arguments:
     weights     -- weight array to scale
@@ -146,16 +147,9 @@ def drive_network_train(esn, inputs, targets, duration):
     :param targets: training target output values
     :param duration: duration of the training period
     """
-    esn.x_r = np.zeros((duration, esn.n_r))
+    esn.x_r = zeros((duration, esn.n_r))
 
     for i in range(1, duration):
-        print 'RESERVOIR SIZE: '
-        print esn.x_r[i].shape
-        print 'INPUTS SIZE: '
-        print inputs[i].shape
-        print inputs[i, None].shape
-        print 'IN-RESRVOIR SIZE: '
-        print esn.w_in.shape
         esn.x_r[i] = inputs[i].dot(esn.w_in)
             #np.tanh(inputs[i].dot(esn.w_in)
                             # + esn.x_r[i - 1].dot(esn.w_r)
