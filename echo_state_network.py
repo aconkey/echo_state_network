@@ -48,6 +48,7 @@ from scipy import sparse
 from scipy.sparse.linalg import eigs
 from scipy.stats import threshold
 from sklearn.linear_model import Ridge
+from math import exp
 
 
 def run_simulation(esn, train_data):
@@ -174,10 +175,10 @@ def drive_network_test(esn, inputs, duration):
                              + (esn.x_r[i - 1] * esn.w_r)
                              + (esn.x_out[i - 1] * esn.w_fb))
         esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
-        esn.x_out[i] = np.tanh(esn.x_r[i].dot(esn.w_out.T))
+        esn.x_out[i] = sigmoid(esn.x_r[i].dot(esn.w_out.T))
 
-    #esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
-    #esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
+    esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
+    esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
 
 def compute_accuracy(expected, actual):
     """
@@ -190,6 +191,9 @@ def compute_accuracy(expected, actual):
     n_correct = sum((expected + actual) != 1)
     total = float(len(expected))
     return n_correct / total
+
+def sigmoid(x):
+    return 1 / (1 + exp(-x))
 
 
 if __name__ == '__main__':
