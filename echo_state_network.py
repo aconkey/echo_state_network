@@ -43,7 +43,6 @@ rs              RandomState for random number generation
 ==========================================================
 """
 import numpy as np
-from numpy.matlib import zeros
 from numpy.random import RandomState
 from scipy import sparse
 from scipy.sparse.linalg import eigs
@@ -81,6 +80,11 @@ def run_simulation(esn, train_data):
 
     # compute and output simple accuracy computation:
     print compute_accuracy(esn.x_target, esn.x_out)
+
+    print 'Target activations:'
+    print esn.x_target
+    print 'Output activations:'
+    print esn.x_out
 
 
 def initialize_weights(n_rows, n_cols, density=0.1, randomstate=RandomState(1), scale=1.0):
@@ -147,13 +151,12 @@ def drive_network_train(esn, inputs, targets, duration):
     :param targets: training target output values
     :param duration: duration of the training period
     """
-    esn.x_r = zeros((duration, esn.n_r))
+    esn.x_r = np.zeros((duration, esn.n_r))
 
     for i in range(1, duration):
-        esn.x_r[i] = inputs[i].dot(esn.w_in)
-            #np.tanh(inputs[i].dot(esn.w_in)
-                            # + esn.x_r[i - 1].dot(esn.w_r)
-                            # + targets[i - 1].dot(esn.w_fb))
+        esn.x_r[i] = np.tanh((inputs[i] * esn.w_in)
+                             + (esn.x_r[i - 1] * esn.w_r)
+                             + (targets[i - 1] * esn.w_fb))
         esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
 
 def drive_network_test(esn, inputs, duration):
@@ -167,14 +170,14 @@ def drive_network_test(esn, inputs, duration):
     esn.x_out = np.zeros((duration, esn.n_out))
 
     for i in range(1, duration):
-        esn.x_r[i] = np.tanh(inputs[i].dot(esn.w_in)
-                             + esn.x_r[i - 1].dot(esn.w_r)
-                             + esn.x_out[i - 1].dot(esn.w_fb))
+        esn.x_r[i] = np.tanh((inputs[i] * esn.w_in)
+                             + (esn.x_r[i - 1] * esn.w_r)
+                             + (esn.x_out[i - 1] * esn.w_fb))
         esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
-        esn.x_out[i] = np.tanh(esn.x_r[i].dot(esn.w_out))
+        esn.x_out[i] = np.tanh(esn.x_r[i].dot(esn.w_out.T))
 
-    esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
-    esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
+    #esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
+    #esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
 
 def compute_accuracy(expected, actual):
     """
@@ -230,7 +233,7 @@ class EchoStateNetwork:
 
     def __init__(self, n_in=10, n_r=100, n_out=1, w_in=[], w_r=[], w_out=[], w_fb=[], x_in=[], x_r=[], x_out=[],
                  x_target=[], scale_in=1.0, scale_r=1.0, scale_fb=1.0, density_in=1.0, density_r=0.1,
-                 density_fb=1.0, alpha=0.9, rho=0.9, out_thresh=0.5, seed=123, rs=RandomState(123)):
+                 density_fb=1.0, alpha=0.9, rho=0.9, out_thresh=0.5, seed=123):
         self.n_in = n_in
         self.n_r = n_r
         self.n_out = n_out
@@ -252,7 +255,7 @@ class EchoStateNetwork:
         self.rho = rho
         self.out_thresh = out_thresh
         self.seed = seed
-        self.rs = rs
+        self.rs = RandomState(seed)
 
 
 """
