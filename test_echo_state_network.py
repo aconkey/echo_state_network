@@ -68,7 +68,7 @@ class EchoStateNetworkTests(unittest.TestCase):
                             [1],
                             [1]])
         data = (inputs, targets)
-        network = esn.EchoStateNetwork()
+        network = esn.EchoStateNetwork(seed=124)
         print 'Running simulation:'
         esn.run_simulation(network, data)
 
