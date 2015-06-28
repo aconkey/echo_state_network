@@ -82,12 +82,6 @@ def run_simulation(esn, train_data):
     # compute and output simple accuracy computation:
     print compute_accuracy(esn.x_target, esn.x_out)
 
-    print 'Target activations:'
-    print esn.x_target
-    print 'Output activations:'
-    print esn.x_out
-
-
 def initialize_weights(n_rows, n_cols, density=0.1, randomstate=RandomState(1), scale=1.0):
     """
     Initialize a sparse random matrix of weights with dimensions
