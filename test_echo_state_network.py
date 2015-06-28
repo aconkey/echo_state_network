@@ -55,21 +55,20 @@ class EchoStateNetworkTests(unittest.TestCase):
         self.assertAlmostEqual(0.0, esn.compute_accuracy(e4, a3))
         self.assertAlmostEqual(0.6, esn.compute_accuracy(e5, a5))
 
-    def test_run_simulation(self):
+    def test_basic_run_simulation(self):
         inputs = np.random.rand(10, 10)
-        targets = np.array([[1],
-                            [1],
-                            [1],
-                            [0],
-                            [0],
-                            [0],
-                            [1],
-                            [1],
-                            [1],
-                            [1]])
+        targets = np.ones((10, 1))
         data = (inputs, targets)
-        network = esn.EchoStateNetwork(seed=124)
-        print 'Running simulation:'
+        network = esn.EchoStateNetwork()
+        print 'Running basic simulation... accuracy:'
+        esn.run_simulation(network, data)
+
+    def test_load_run_simulation(self):
+        inputs = np.random.rand(100000, 300)
+        targets = np.ones((100000, 1))
+        data = (inputs, targets)
+        network = esn.EchoStateNetwork()
+        print 'Running stress load simulation... accuracy:'
         esn.run_simulation(network, data)
 
 def main():
