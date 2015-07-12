@@ -4,6 +4,8 @@ from numpy.random import RandomState
 from numpy.testing import assert_allclose
 from scipy.sparse.linalg import eigs
 import numpy as np
+import random
+from sklearn import preprocessing
 
 class EchoStateNetworkTests(unittest.TestCase):
 
@@ -33,43 +35,72 @@ class EchoStateNetworkTests(unittest.TestCase):
         self.assertAlmostEqual(0.1, max(abs(eigs(w3)[0])))
 
     def test_compute_accuracy(self):
-        e1 = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-        e2 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-        e3 = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
-        e4 = np.array([0, 0, 0, 0, 0, 0, 0, 1, 1, 1])
-        e5 = np.array([1, 1, 0, 1, 0, 0, 1, 0, 0, 1])
-        a1 = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-        a2 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-        a3 = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
-        a4 = np.array([0, 0, 0, 0, 0, 0, 0, 1, 1, 1])
-        a5 = np.array([1, 0, 0, 1, 0, 1, 1, 1, 0, 0])
-        self.assertAlmostEqual(1.0, esn.compute_accuracy(e1, a1))
-        self.assertAlmostEqual(1.0, esn.compute_accuracy(e2, a2))
-        self.assertAlmostEqual(1.0, esn.compute_accuracy(e3, a3))
-        self.assertAlmostEqual(1.0, esn.compute_accuracy(e4, a4))
-        self.assertAlmostEqual(0.7, esn.compute_accuracy(e3, a2))
-        self.assertAlmostEqual(0.7, esn.compute_accuracy(e4, a1))
-        self.assertAlmostEqual(0.0, esn.compute_accuracy(e1, a2))
-        self.assertAlmostEqual(0.0, esn.compute_accuracy(e2, a1))
-        self.assertAlmostEqual(0.0, esn.compute_accuracy(e3, a4))
-        self.assertAlmostEqual(0.0, esn.compute_accuracy(e4, a3))
-        self.assertAlmostEqual(0.6, esn.compute_accuracy(e5, a5))
+        expected = np.array([[1, 0, 0],
+                             [0, 1, 0],
+                             [1, 0, 0],
+                             [0, 0, 1],
+                             [0, 0, 1],
+                             [0, 1, 0],
+                             [1, 0, 0],
+                             [1, 0, 0]])
+        a1 = expected
+        a2 = np.array([[0, 1, 0],
+                       [0, 1, 0],
+                       [1, 0, 0],
+                       [0, 0, 1],
+                       [0, 0, 1],
+                       [0, 1, 0],
+                       [1, 0, 0],
+                       [0, 1, 0]])
+        a3 = np.array([[0, 1, 0],
+                       [1, 0, 0],
+                       [0, 1, 0],
+                       [1, 0, 0],
+                       [0, 1, 0],
+                       [1, 0, 0],
+                       [0, 1, 0],
+                       [0, 1, 0]])
+        a4= np.array([[1, 0, 0],
+                      [0, 1, 0],
+                      [0, 1, 0],
+                      [0, 1, 0],
+                      [0, 1, 0],
+                      [1, 0, 0],
+                      [0, 1, 0],
+                      [0, 0, 1]])
+
+        self.assertAlmostEqual(1.0, esn.compute_accuracy(expected, a1))
+        self.assertAlmostEqual(0.75, esn.compute_accuracy(expected, a2))
+        self.assertAlmostEqual(0.0, esn.compute_accuracy(expected, a3))
+        self.assertAlmostEqual(0.25, esn.compute_accuracy(expected, a4))
 
     def test_basic_run_simulation(self):
         inputs = np.random.rand(10, 10)
-        targets = np.ones((10, 1))
+        targets = np.array([[1, 0], [1, 0], [1, 0], [0, 1], [0, 1], [1, 0], [0, 1], [1, 0], [0, 1], [0, 1]])
         data = (inputs, targets)
         network = esn.EchoStateNetwork()
         print 'Running basic simulation... accuracy:'
         esn.run_simulation(network, data)
 
-    def test_load_run_simulation(self):
-        inputs = np.random.rand(100000, 300)
-        targets = np.ones((100000, 1))
+    # def test_load_run_simulation(self):
+    #     inputs = np.random.rand(100000, 300)
+    #     targets = np.ones((100000, 2))
+    #     data = (inputs, targets)
+    #     network = esn.EchoStateNetwork()
+    #     print 'Running stress load simulation... accuracy:'
+    #     esn.run_simulation(network, data)
+
+    def test_esn_iris_data(self):
+        csv = np.genfromtxt('resources/iris.csv', delimiter=",")
+        random.shuffle(csv)
+        inputs = csv[:, :4]
+        inputs = preprocessing.scale(inputs)
+        targets = csv[:, 4:]
         data = (inputs, targets)
-        network = esn.EchoStateNetwork()
-        print 'Running stress load simulation... accuracy:'
+        network = esn.EchoStateNetwork(n_out=3)
+        print 'Running Iris data set... accuracy:'
         esn.run_simulation(network, data)
+
 
 def main():
     unittest.main()
