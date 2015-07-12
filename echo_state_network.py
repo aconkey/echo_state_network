@@ -46,7 +46,6 @@ import numpy as np
 from numpy.random import RandomState
 from scipy import sparse
 from scipy.sparse.linalg import eigs
-from scipy.stats import threshold
 from sklearn.linear_model import Ridge
 from math import exp
 
@@ -170,24 +169,25 @@ def drive_network_test(esn, inputs, duration):
                              + (esn.x_out[i - 1] * esn.w_fb))
         esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
         esn.x_out[i] = sigmoid(esn.x_r[i].dot(esn.w_out.T))
-
-    esn.x_out = threshold(esn.x_out, threshmin=esn.out_thresh, newval=0.0)
-    esn.x_out = threshold(esn.x_out, threshmax=0.0, newval=1.0)
+        "will maybe want a more efficient way of doing this: "
+        max_index = esn.x_out[i].argmax()
+        esn.x_out[i] = np.zeros(esn.x_out[i].shape)
+        esn.x_out[i][max_index] = 1
 
 def compute_accuracy(expected, actual):
     """
     Simple computation of accuracy taking the number of correct over total.
 
     Keyword arguments:
-    expected    -- vector of 1s and 0s, expected values
-    actual      -- vector of 1s and 0s, actual values, same length as expected
+    expected    -- array of 1s and 0s, expected values
+    actual      -- array of 1s and 0s, actual values, same size as expected
     """
-    n_correct = sum((expected + actual) != 1)
-    total = float(len(expected))
+    total = float(expected.shape[0])
+    n_correct = np.sum(np.multiply(expected, actual))
     return n_correct / total
 
 def sigmoid(x):
-    return 1 / (1 + exp(-x))
+    return 1 / (1 + np.exp(-x))
 
 
 if __name__ == '__main__':
@@ -229,7 +229,7 @@ class EchoStateNetwork:
         rs              RandomState for random number generation
     """
 
-    def __init__(self, n_in=10, n_r=100, n_out=1, w_in=[], w_r=[], w_out=[], w_fb=[], x_in=[], x_r=[], x_out=[],
+    def __init__(self, n_in=10, n_r=100, n_out=2, w_in=[], w_r=[], w_out=[], w_fb=[], x_in=[], x_r=[], x_out=[],
                  x_target=[], scale_in=1.0, scale_r=1.0, scale_fb=1.0, density_in=1.0, density_r=0.1,
                  density_fb=1.0, alpha=0.9, rho=0.9, out_thresh=0.5, seed=123):
         self.n_in = n_in
@@ -257,10 +257,7 @@ class EchoStateNetwork:
 
 
 """
-STATUS: Ridge Regression done.
-
 Need to:
-    - create mock data set for testing and import it
     - formulate actual data set and use it
     - provide way of computing performance metrics
     - decide on sampling for performance metrics (sample only once at end of train?)
