@@ -1,5 +1,6 @@
 import unittest
 import echo_state_network as esn
+from echo_state_network import EchoStateNetwork
 from numpy.random import RandomState
 from numpy.testing import assert_allclose
 from scipy.sparse.linalg import eigs
@@ -14,24 +15,24 @@ class EchoStateNetworkTests(unittest.TestCase):
         self.rs2 = RandomState(1)
 
     def test_initialize_weights(self):
-        w1 = esn.initialize_weights(10, 10, randomstate=self.rs1)
-        w2 = esn.initialize_weights(10, 10, randomstate=self.rs2)
+        w1 = EchoStateNetwork.initialize_weights(10, 10, 0.1, self.rs1, 1.0)
+        w2 = EchoStateNetwork.initialize_weights(10, 10, 0.1, self.rs2, 1.0)
         assert_allclose(w1.toarray(), w2.toarray())
         self.assertLessEqual(np.amax(w1.data), 1.0)
         self.assertGreaterEqual(np.amin(w1.data), -1.0)
 
-        w3 = esn.initialize_weights(10, 10, randomstate=self.rs1, scale=5.0)
+        w3 = EchoStateNetwork.initialize_weights(10, 10, 0.1, self.rs1, 5.0)
         self.assertLessEqual(np.amax(w3.data), 5.0)
         self.assertGreaterEqual(np.amin(w3.data), -5.0)
         self.assertLess(np.amin(w3.data), -1.0)
         self.assertGreater(np.amax(w3.data), 1.0)
 
     def test_initialize_reservoir(self):
-        w1 = esn.initialize_reservoir(10)
+        w1 = EchoStateNetwork.initialize_reservoir(10, 0.1, self.rs1, 1.0, 1.0)
         self.assertAlmostEqual(1.0, max(abs(eigs(w1)[0])))
-        w2 = esn.initialize_reservoir(10, spec_rad=5.0)
+        w2 = EchoStateNetwork.initialize_reservoir(10, 0.1, self.rs1, 1.0, 5.0)
         self.assertAlmostEqual(5.0, max(abs(eigs(w2)[0])))
-        w3 = esn.initialize_reservoir(10, spec_rad=0.1)
+        w3 = EchoStateNetwork.initialize_reservoir(10, 0.1, self.rs1, 1.0, 0.1)
         self.assertAlmostEqual(0.1, max(abs(eigs(w3)[0])))
 
     def test_compute_accuracy(self):
@@ -77,30 +78,30 @@ class EchoStateNetworkTests(unittest.TestCase):
     def test_basic_run_simulation(self):
         inputs = np.random.rand(10, 10)
         targets = np.array([[1, 0], [1, 0], [1, 0], [0, 1], [0, 1], [1, 0], [0, 1], [1, 0], [0, 1], [0, 1]])
-        data = (inputs, targets)
-        network = esn.EchoStateNetwork()
-        print 'Running basic simulation... accuracy:'
-        esn.run_simulation(network, data)
+        network = esn.EchoStateNetwork(inputs, targets)
+        print '\nRunning basic simulation...'
+        accuracy = esn.run_simulation(network)
+        print 'Test accuracy:'
+        print accuracy
 
     # def test_load_run_simulation(self):
     #     inputs = np.random.rand(100000, 300)
     #     targets = np.ones((100000, 2))
-    #     data = (inputs, targets)
-    #     network = esn.EchoStateNetwork()
-    #     print 'Running stress load simulation... accuracy:'
-    #     esn.run_simulation(network, data)
+    #     network = esn.EchoStateNetwork(inputs, targets)
+    #     print '\nRunning stress load simulation...'
+    #     accuracy = esn.run_simulation(network)
+    #     print 'Test accuracy:'
+    #     print accuracy
 
     def test_esn_iris_data(self):
-        csv = np.genfromtxt('resources/iris.csv', delimiter=",")
-        random.shuffle(csv)
-        inputs = csv[:, :4]
+        inputs = np.genfromtxt('resources/iris_inputs.csv', delimiter=",")
+        targets = np.genfromtxt('resources/iris_targets.csv', delimiter=",")
         inputs = preprocessing.scale(inputs)
-        targets = csv[:, 4:]
-        data = (inputs, targets)
-        network = esn.EchoStateNetwork(n_out=3)
-        print 'Running Iris data set... accuracy:'
-        esn.run_simulation(network, data)
-
+        network = esn.EchoStateNetwork(inputs, targets)
+        print 'Running Iris data set...'
+        accuracy = esn.run_simulation(network)
+        print 'Test accuracy:'
+        print accuracy
 
 def main():
     unittest.main()
