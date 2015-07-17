@@ -3,10 +3,9 @@ import echo_state_network as esn
 from echo_state_network import EchoStateNetwork
 from numpy.random import RandomState
 from numpy.testing import assert_allclose
+from numpy.testing import assert_array_equal
 from scipy.sparse.linalg import eigs
 import numpy as np
-import random
-from sklearn import preprocessing
 
 class EchoStateNetworkTests(unittest.TestCase):
 
@@ -93,15 +92,21 @@ class EchoStateNetworkTests(unittest.TestCase):
     #     print 'Test accuracy:'
     #     print accuracy
 
-    def test_esn_iris_data(self):
-        inputs = np.genfromtxt('resources/iris_inputs.csv', delimiter=",")
-        targets = np.genfromtxt('resources/iris_targets.csv', delimiter=",")
-        inputs = preprocessing.scale(inputs)
-        network = esn.EchoStateNetwork(inputs, targets)
-        print 'Running Iris data set...'
-        accuracy = esn.run_simulation(network)
-        print 'Test accuracy:'
-        print accuracy
+    def test_create_pseudo_signal(self):
+        orig = np.array([[0, 1, 0],
+                         [1, 0, 0]])
+        repeat = np.array([[0, 1, 0],
+                           [0, 1, 0],
+                           [0, 1, 0],
+                           [1, 0, 0],
+                           [1, 0, 0],
+                           [1, 0, 0]])
+        print 'Original:'
+        print orig
+        print 'Repeated:'
+        print repeat
+
+        assert_array_equal(repeat, esn.create_pseudo_signal(orig, 3))
 
 def main():
     unittest.main()

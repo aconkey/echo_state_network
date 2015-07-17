@@ -132,7 +132,7 @@ class EchoStateNetwork:
 
     def __init__(self, inputs, targets, seed=123, n_r=100, density_in=1.0, density_r=0.1,
                  density_fb=1.0, scale_in=1.0, scale_r=1.0, scale_fb=1.0, alpha=0.9,
-                 rho=0.9, w_out=[], test_size=0.2, x_r=[], x_out=[]):
+                 rho=0.9, w_out=[], test_size=0.2, x_r=[], x_out=[], signal_reps=10):
         self.inputs = inputs
         self.n_in = self.inputs.shape[1]
         # add bias node:
@@ -157,6 +157,11 @@ class EchoStateNetwork:
         self.test_size = test_size
         self.x_in_train, self.x_in_test, self.x_target_train, self.x_target_test = \
             train_test_split(self.inputs, self.targets, test_size=self.test_size)
+        # create pseudo-signals of data:
+        self.x_in_train = self.create_pseudo_signal(self.x_in_train, signal_reps)
+        self.x_in_test = self.create_pseudo_signal(self.x_in_test, signal_reps)
+        self.x_target_train = self.create_pseudo_signal(self.x_target_train, signal_reps)
+        self.x_target_test = self.create_pseudo_signal(self.x_target_test, signal_reps)
         self.t_train = self.x_in_train.shape[0]
         self.t_test = self.x_in_test.shape[0]
         self.x_r = x_r
@@ -215,6 +220,20 @@ class EchoStateNetwork:
         """
         weights = spec_rad * (weights / max(abs(eigs(weights)[0])))
         return weights
+
+    @staticmethod
+    def create_pseudo_signal(data, reps):
+        """
+        Create a pseudo-signal from a data set by repeating each row the specified number of times.
+
+        :param data: basis of pseudo-signal
+        :param reps: number of times each data element is to be repeated
+        :return: pseudo-signal of original data
+        """
+        signal = np.tile(data[0], (reps, 1))
+        for i in range(1, data.shape[0]):
+            signal = np.vstack((signal, np.tile(data[i], (reps, 1))))
+        return signal
 
 
 """
