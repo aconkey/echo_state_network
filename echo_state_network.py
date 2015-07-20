@@ -11,6 +11,7 @@ from scipy import sparse
 from scipy.sparse.linalg import eigs
 from sklearn.linear_model import Ridge
 from sklearn.cross_validation import train_test_split
+import random
 
 def run_simulation(esn):
     """
@@ -40,13 +41,19 @@ def drive_network_train(esn):
 
     :param esn: Echo State Network to train with
     """
-    esn.x_r = np.zeros((esn.t_train, esn.n_r))
+    for instance in esn.train_data:
+        x_in = np.vstack((np.zeros((1, esn.n_in)), instance[0]))
+        x_target = np.vstack((np.zeros((1, esn.n_out)),
+                              np.tile(instance[1], (instance[0].shape[0]))))  # repeat for each time step
+        x_instance = np.zeros((x_in.shape[0], esn.n_r))
+        for i in range(1, x_in.shape[0] + 1):
+            x_instance[i] = np.tanh((x_in[i] * esn.w_in)
+                                    + (x_instance[i - 1] * esn.w_r)
+                                    + (x_target[i - 1] * esn.w_fb))
+            x_instance[i] = (1 - esn.alpha) * x_instance[i - 1] + esn.alpha * x_instance[i]
+        np.vstack((esn.x_r, x_instance[1:]))  # add instance activation except initial zero activation
+        np.vstack((esn.x_target_train, x_target[1:]))  # same with targets
 
-    for i in range(1, esn.t_train):
-        esn.x_r[i] = np.tanh((esn.x_in_train[i] * esn.w_in)
-                             + (esn.x_r[i - 1] * esn.w_r)
-                             + (esn.x_target_train[i - 1] * esn.w_fb))
-        esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
 
 def drive_network_test(esn):
     """
@@ -54,19 +61,31 @@ def drive_network_test(esn):
 
     :param esn: Echo State Network to test with
     """
-    esn.x_out = np.zeros((esn.t_test, esn.n_out))
+    targets = np.zeros((esn.test_data.shape[0], esn.n_out))
+    outputs = np.zeros(targets.shape)
+    for j in range(esn.test_data):
+        instance = esn.test_data[j]
+        x_in = np.vstack((np.zeros((1, esn.n_in)), instance[0]))
+        targets[j] = instance[1]  # only a single vector for testing to match target classification for sentence
+        x_instance = np.zeros((x_in.shape[0], esn.n_r))
+        x_out = np.zeros((x_in.shape[0], esn.n_out))
+        for i in range(1, x_in.shape[0] + 1):
+            x_instance[i] = np.tanh((x_in[i] * esn.w_in)
+                                    + (x_instance[i - 1] * esn.w_r)
+                                    + (x_out[i - 1] * esn.w_fb))
+            x_instance[i] = (1 - esn.alpha) * x_instance[i - 1] + esn.alpha * x_instance[i]
+            x_out[i] = sigmoid(x_instance[i].dot(esn.w_out.T))
 
-    for i in range(1, esn.t_test):
-        esn.x_r[i] = np.tanh((esn.x_in_test[i] * esn.w_in)
-                             + (esn.x_r[i - 1] * esn.w_r)
-                             + (esn.x_out[i - 1] * esn.w_fb))
-        esn.x_r[i] = (1 - esn.alpha) * esn.x_r[i - 1] + esn.alpha * esn.x_r[i]
-        esn.x_out[i] = sigmoid(esn.x_r[i].dot(esn.w_out.T))
+            # will maybe want a more efficient way of doing this:
+            max_index = x_out[i].argmax()
+            x_out[i] = np.zeros(x_out[i].shape)
+            x_out[i][max_index] = 1
 
-        # will maybe want a more efficient way of doing this:
-        max_index = esn.x_out[i].argmax()
-        esn.x_out[i] = np.zeros(esn.x_out[i].shape)
-        esn.x_out[i][max_index] = 1
+    # x_out is then the array of all output vectors over time. need to somehow determine
+    # a single classification and store it at x_out[j]
+
+    accuracy = compute_accuracy(targets, outputs)
+    return targets, outputs, accuracy
 
 def compute_accuracy(expected, actual):
     """
@@ -96,6 +115,9 @@ class EchoStateNetwork:
         n_r             number of reservoir units
         n_out           number of readout units
 
+        n_train         number of training instances
+        n_test          number of testing instances
+
         w_in		    weights from input to reservoir                     : n_r   x n_in + 1
         w_r		        weights internal to reservoir                       : n_r   x n_r
         w_out		    weights from reservoir to readout                   : n_r   x n_out
@@ -103,9 +125,6 @@ class EchoStateNetwork:
 
         test_size       percentage of input data that is the testing set
             NOTE: a train set will be constructed as complement of test set
-
-        t_train         number of time steps in training
-        t_test          number of time steps in testing
 
         x_in_train      activations of input nodes over train time          : t_train x n_in
         x_in_test       activations of input nodes over test time           : t_test x n_in
@@ -130,11 +149,11 @@ class EchoStateNetwork:
         rs              RandomState for random number generation
     """
 
-    def __init__(self, inputs, targets, seed=123, n_r=100, density_in=1.0, density_r=0.1,
+    def __init__(self, data, seed=123, n_r=100, density_in=1.0, density_r=0.1,
                  density_fb=1.0, scale_in=1.0, scale_r=1.0, scale_fb=1.0, alpha=0.9,
                  rho=0.9, w_out=[], test_size=0.2, x_r=[], x_out=[], signal_reps=10):
-        self.inputs = inputs
-        self.n_in = self.inputs.shape[1]
+        self.data = data
+        self.n_in = self.data[0][0].shape[0]
         # add bias node:
         self.inputs = np.concatenate((np.ones((inputs.shape[0], 1)), inputs), axis=1)
         self.targets = targets
@@ -155,15 +174,14 @@ class EchoStateNetwork:
         self.w_fb = self.initialize_weights(self.n_out, self.n_r, self.density_fb, self.rs, self.scale_fb)
         self.w_out = w_out
         self.test_size = test_size
-        self.x_in_train, self.x_in_test, self.x_target_train, self.x_target_test = \
-            train_test_split(self.inputs, self.targets, test_size=self.test_size)
+        self.train_data, self.test_data = self.train_test_split(self.data, self.test_size)
         # create pseudo-signals of data:
-        self.x_in_train = self.create_pseudo_signal(self.x_in_train, signal_reps)
-        self.x_in_test = self.create_pseudo_signal(self.x_in_test, signal_reps)
-        self.x_target_train = self.create_pseudo_signal(self.x_target_train, signal_reps)
-        self.x_target_test = self.create_pseudo_signal(self.x_target_test, signal_reps)
-        self.t_train = self.x_in_train.shape[0]
-        self.t_test = self.x_in_test.shape[0]
+        # self.x_in_train = self.create_pseudo_signal(self.x_in_train, signal_reps)
+        # self.x_in_test = self.create_pseudo_signal(self.x_in_test, signal_reps)
+        # self.x_target_train = self.create_pseudo_signal(self.x_target_train, signal_reps)
+        # self.x_target_test = self.create_pseudo_signal(self.x_target_test, signal_reps)
+        self.n_train = self.x_in_train.shape[0]
+        self.n_test = self.x_in_test.shape[0]
         self.x_r = x_r
         self.x_out = x_out
 
@@ -235,6 +253,23 @@ class EchoStateNetwork:
             signal = np.vstack((signal, np.tile(data[i], (reps, 1))))
         return signal
 
+    @staticmethod
+    def add_bias(data):
+        biased = data
+        for x in biased:
+            x_inputs = x[0]
+            np.concatenate((np.ones((x_inputs.shape[0], 1)), x_inputs), axis=1)
+        return biased
+
+    @staticmethod
+    def train_test_split(data, test_size):
+        random.shuffle(data)
+
+        split_index = test_size * len(data)
+        test_data = data[:split_index]
+        train_data = data[split_index:]
+
+        return train_data, test_data
 
 """
 Need to:
