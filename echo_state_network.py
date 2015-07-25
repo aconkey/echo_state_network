@@ -10,7 +10,6 @@ from numpy.random import RandomState
 from scipy import sparse
 from scipy.sparse.linalg import eigs
 from sklearn.linear_model import Ridge
-from sklearn.cross_validation import train_test_split
 import random
 
 def run_simulation(esn):
@@ -45,12 +44,14 @@ def drive_network_train(esn):
         x_in = np.vstack((np.zeros((1, esn.n_in)), instance[0]))
         x_target = np.vstack((np.zeros((1, esn.n_out)),
                               np.tile(instance[1], (instance[0].shape[0]))))  # repeat for each time step
-        x_instance = np.zeros((x_in.shape[0], esn.n_r))
-        for i in range(1, x_in.shape[0] + 1):
+        duration = x_in.shape[0]
+        x_instance = np.zeros((duration, esn.n_r))
+        for i in range(1, duration + 1):  # +1 because loop range is shifted by initial zero vectors
             x_instance[i] = np.tanh((x_in[i] * esn.w_in)
                                     + (x_instance[i - 1] * esn.w_r)
                                     + (x_target[i - 1] * esn.w_fb))
             x_instance[i] = (1 - esn.alpha) * x_instance[i - 1] + esn.alpha * x_instance[i]
+            "might need to initialize esn.x_r properly before stacking; done in class instance initialization?"
         np.vstack((esn.x_r, x_instance[1:]))  # add instance activation except initial zero activation
         np.vstack((esn.x_target_train, x_target[1:]))  # same with targets
 
@@ -67,9 +68,10 @@ def drive_network_test(esn):
         instance = esn.test_data[j]
         x_in = np.vstack((np.zeros((1, esn.n_in)), instance[0]))
         targets[j] = instance[1]  # only a single vector for testing to match target classification for sentence
-        x_instance = np.zeros((x_in.shape[0], esn.n_r))
-        x_out = np.zeros((x_in.shape[0], esn.n_out))
-        for i in range(1, x_in.shape[0] + 1):
+        duration = x_in.shape[0]
+        x_instance = np.zeros((duration, esn.n_r))
+        x_out = np.zeros((duration, esn.n_out))
+        for i in range(1, duration + 1):
             x_instance[i] = np.tanh((x_in[i] * esn.w_in)
                                     + (x_instance[i - 1] * esn.w_r)
                                     + (x_out[i - 1] * esn.w_fb))
@@ -81,8 +83,10 @@ def drive_network_test(esn):
             x_out[i] = np.zeros(x_out[i].shape)
             x_out[i][max_index] = 1
 
-    # x_out is then the array of all output vectors over time. need to somehow determine
-    # a single classification and store it at x_out[j]
+        # for now I am just taking the instance classification to be the classification at the end of
+        # instance chain. should print out activations and see how they fare, may want to have an
+        # averaging window
+        outputs[j] = x_out[duration]
 
     accuracy = compute_accuracy(targets, outputs)
     return targets, outputs, accuracy
@@ -151,13 +155,10 @@ class EchoStateNetwork:
 
     def __init__(self, data, seed=123, n_r=100, density_in=1.0, density_r=0.1,
                  density_fb=1.0, scale_in=1.0, scale_r=1.0, scale_fb=1.0, alpha=0.9,
-                 rho=0.9, w_out=[], test_size=0.2, x_r=[], x_out=[], signal_reps=10):
+                 rho=0.9, w_out=[], test_size=0.2, x_r=[], x_out=[]):
         self.data = data
-        self.n_in = self.data[0][0].shape[0]
-        # add bias node:
-        self.inputs = np.concatenate((np.ones((inputs.shape[0], 1)), inputs), axis=1)
-        self.targets = targets
-        self.n_out = self.targets.shape[1]
+        self.n_in = self.data[0][0].shape[1]
+        self.n_out = self.data[0][1].shape[1]
         self.seed = seed
         self.rs = RandomState(self.seed)
         self.n_r = n_r
@@ -175,13 +176,6 @@ class EchoStateNetwork:
         self.w_out = w_out
         self.test_size = test_size
         self.train_data, self.test_data = self.train_test_split(self.data, self.test_size)
-        # create pseudo-signals of data:
-        # self.x_in_train = self.create_pseudo_signal(self.x_in_train, signal_reps)
-        # self.x_in_test = self.create_pseudo_signal(self.x_in_test, signal_reps)
-        # self.x_target_train = self.create_pseudo_signal(self.x_target_train, signal_reps)
-        # self.x_target_test = self.create_pseudo_signal(self.x_target_test, signal_reps)
-        self.n_train = self.x_in_train.shape[0]
-        self.n_test = self.x_in_test.shape[0]
         self.x_r = x_r
         self.x_out = x_out
 
